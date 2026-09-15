@@ -81,7 +81,7 @@ async function main() {
   await page.getByRole('button', { name: 'Sage', exact: true }).click();
   await page.getByLabel(labelName, { exact: true }).check();
   await page.getByRole('button', { name: 'Sync now', exact: true }).click();
-  await expect(page.getByRole('dialog').getByRole('status')).toHaveText('Synced to GitHub', {
+  await expect(page.locator('.note-save-row').getByRole('status')).toHaveText('Synced to GitHub', {
     timeout: 45000,
   });
   const href = await page.getByRole('link', { name: 'Open on GitHub', exact: true }).getAttribute('href');
@@ -102,12 +102,12 @@ async function main() {
 
   await page.getByRole('button', { name: 'Archive note', exact: true }).click();
   await page.getByRole('button', { name: 'Sync now', exact: true }).click();
-  await expect(page.getByRole('dialog').getByRole('status')).toHaveText('Synced to GitHub', {
+  await expect(page.locator('.note-save-row').getByRole('status')).toHaveText('Synced to GitHub', {
     timeout: 45000,
   });
   await page.getByRole('button', { name: 'Move to trash', exact: true }).click();
   await page.getByRole('button', { name: 'Sync now', exact: true }).click();
-  await expect(page.getByRole('dialog').getByRole('status')).toHaveText('Synced to GitHub', {
+  await expect(page.locator('.note-save-row').getByRole('status')).toHaveText('Synced to GitHub', {
     timeout: 45000,
   });
   remote = await api(`/repos/${repository}/issues/${number}`);
@@ -115,7 +115,7 @@ async function main() {
     throw new Error('Archived trash state was not preserved.');
   await page.getByRole('button', { name: 'Restore note', exact: true }).click();
   await page.getByRole('button', { name: 'Sync now', exact: true }).click();
-  await expect(page.getByRole('dialog').getByRole('status')).toHaveText('Synced to GitHub', {
+  await expect(page.locator('.note-save-row').getByRole('status')).toHaveText('Synced to GitHub', {
     timeout: 45000,
   });
   remote = await api(`/repos/${repository}/issues/${number}`);

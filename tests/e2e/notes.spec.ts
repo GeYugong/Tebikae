@@ -28,7 +28,7 @@ test('a visual draft is saved locally, synced once, and available after token-fr
   await page.getByRole('dialog').getByLabel('Title', { exact: true }).fill('A fresh browser note');
   await page.locator('.ProseMirror[contenteditable="true"]').fill('Written in the visual editor. 中文内容。');
   await page.getByRole('button', { name: 'Sync now', exact: true }).click();
-  await expect(page.getByRole('dialog').getByRole('status')).toContainText('Synced to GitHub');
+  await expect(page.locator('.note-save-row').getByRole('status')).toContainText('Synced to GitHub');
   expect(
     remote.writes.filter((request) => request.method === 'POST' && request.path.endsWith('/issues')),
   ).toHaveLength(1);
@@ -150,7 +150,7 @@ test('explicit conversion preserves an existing Issue and label changes use incr
   await page.locator('a[href$="#/issues"]').click();
   await page.locator('.note-card').filter({ hasText: 'An ordinary Issue' }).getByRole('button').click();
   await page.getByRole('button', { name: 'Turn into a note', exact: true }).click();
-  await expect(page.getByRole('dialog').getByRole('status')).toContainText('Synced to GitHub');
+  await expect(page.locator('.note-save-row').getByRole('status')).toContainText('Synced to GitHub');
   const converted = remote.issues.find((issue) => issue.number === 4)!;
   expect(converted.body).toMatch(/^<!-- issue-notes/u);
   expect(converted.body.endsWith('This stays untouched.')).toBe(true);
@@ -163,7 +163,7 @@ test('explicit conversion preserves an existing Issue and label changes use incr
       remote.writes.some((request) => request.method === 'POST' && request.path.endsWith('/4/labels')),
     )
     .toBe(true);
-  await expect(page.getByRole('dialog').getByRole('status')).toContainText('Synced to GitHub');
+  await expect(page.locator('.note-save-row').getByRole('status')).toContainText('Synced to GitHub');
   expect(
     remote.writes
       .filter((request) => request.method === 'PATCH')
@@ -184,10 +184,10 @@ test('an acknowledged create with a lost response is recovered by UUID without c
     .locator('.ProseMirror[contenteditable="true"]')
     .fill('The response can be lost; my note should not be duplicated.');
   await page.getByRole('button', { name: 'Sync now', exact: true }).click();
-  await expect(page.getByRole('dialog').getByRole('status')).toContainText('Awaiting confirmation');
+  await expect(page.locator('.note-save-row').getByRole('status')).toContainText('Awaiting confirmation');
   expect(remote.issues.filter((issue) => issue.title === 'Created once')).toHaveLength(1);
   await page.getByRole('button', { name: 'Check GitHub again', exact: true }).click();
-  await expect(page.getByRole('dialog').getByRole('status')).toContainText('Synced to GitHub');
+  await expect(page.locator('.note-save-row').getByRole('status')).toContainText('Synced to GitHub');
   expect(
     remote.writes.filter((request) => request.method === 'POST' && request.path.endsWith('/issues')),
   ).toHaveLength(1);

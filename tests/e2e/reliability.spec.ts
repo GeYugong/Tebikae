@@ -13,7 +13,7 @@ test('an open editor preserves a remotely merged body through subsequent propert
   state.issues[0]!.updated_at = new Date().toISOString();
   await page.getByRole('button', { name: 'Sage', exact: true }).click();
   await page.getByRole('button', { name: 'Sync now', exact: true }).click();
-  await expect(page.getByRole('dialog').getByRole('status')).toHaveText('Synced to GitHub');
+  await expect(page.locator('.note-save-row').getByRole('status')).toHaveText('Synced to GitHub');
   await expect(page.getByRole('button', { name: 'Load the latest version', exact: true })).toBeVisible();
   await page.getByLabel('Title', { exact: true }).fill('Changed title');
   await page.getByRole('button', { name: 'Sync now', exact: true }).click();
@@ -39,7 +39,7 @@ test('a remote trash change makes the already-open editor read-only after merge'
   );
   await page.getByRole('button', { name: 'Sky', exact: true }).click();
   await page.getByRole('button', { name: 'Sync now', exact: true }).click();
-  await expect(page.getByRole('dialog').getByRole('status')).toHaveText('Synced to GitHub');
+  await expect(page.locator('.note-save-row').getByRole('status')).toHaveText('Synced to GitHub');
   await expect(page.locator('.ProseMirror')).toHaveAttribute('contenteditable', 'false');
   await expect(page.getByRole('button', { name: 'Restore note', exact: true })).toBeEnabled();
   expect(state.issues[0]!.body).toContain('Keep this text');
@@ -66,7 +66,7 @@ test('a failed IndexedDB write keeps text in the editor and offers an emergency 
   });
   await page.locator('.ProseMirror').fill('Only copy of this new text 中文');
   await expect(page.getByRole('alert')).toContainText('Couldn’t save on this device.');
-  await expect(page.getByRole('dialog').getByRole('status')).not.toHaveText('Synced to GitHub');
+  await expect(page.locator('.note-save-row').getByRole('status')).not.toHaveText('Synced to GitHub');
   await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).last().click();
   await expect(page.getByRole('dialog')).toBeVisible();
   await expect(page.locator('.ProseMirror')).toContainText('Only copy of this new text 中文');
