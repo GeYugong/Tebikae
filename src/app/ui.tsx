@@ -1,13 +1,13 @@
 import * as Dialog from '@radix-ui/react-dialog';
-import { X, NotebookPen, Sun, Moon, Monitor } from 'lucide-react';
+import { X, Sun, Moon, Monitor } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { type ReactNode } from 'react';
 import { usePreferences } from './preferences';
-export function Brand({ compact = false }: { compact?: boolean }) {
+export function Brand() {
   return (
     <div className="brand">
       <span className="brand-mark">
-        <NotebookPen size={compact ? 21 : 24} strokeWidth={1.8} />
+        <img src={`${import.meta.env.BASE_URL}icon.svg`} alt="" width={43} height={43} />
       </span>
       <span>
         Tebikae<span className="brand-dot">.</span>

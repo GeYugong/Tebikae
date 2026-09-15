@@ -252,7 +252,7 @@ function Workspace({ offlineReady }: { offlineReady: boolean }) {
   const nav = (
     <>
       <div className="sidebar-brand">
-        <Brand compact />
+        <Brand />
       </div>
       <nav className="main-nav">
         {navItems.map(([name, Icon]) => (

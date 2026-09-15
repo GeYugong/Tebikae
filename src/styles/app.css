@@ -305,11 +305,13 @@ kbd {
 .brand-mark {
   height: 43px;
   width: 43px;
-  border-radius: 12px;
-  background: var(--accent);
-  color: var(--surface);
   display: grid;
   place-items: center;
+}
+.brand-mark img {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 .brand-dot {
   color: var(--accent);
