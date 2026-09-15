@@ -9,9 +9,7 @@ export function Brand() {
       <span className="brand-mark">
         <img src={`${import.meta.env.BASE_URL}icon.svg`} alt="" width={43} height={43} />
       </span>
-      <span>
-        Tebikae<span className="brand-dot">.</span>
-      </span>
+      <span>Tebikae</span>
     </div>
   );
 }
