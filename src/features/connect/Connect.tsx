@@ -60,6 +60,16 @@ export function ConnectForm({ onConnected }: { onConnected?: () => void }) {
           disabled={busy}
         />
       </label>
+      <p className="field-help">
+        {t('connect.noRepository')}{' '}
+        <a
+          href="https://github.com/new?name=tebikae-notes&visibility=private&owner=%40me"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {t('connect.createRepository')} <ArrowUpRight size={13} />
+        </a>
+      </p>
       <label>
         {t('connect.token')}
         <input

@@ -57,6 +57,8 @@
     "formIntro": "连接私人仓库，就可以开始记录。",
     "repository": "GitHub 仓库",
     "repositoryPlaceholder": "owner / repository 或 GitHub 仓库网址",
+    "noRepository": "还没有仓库？",
+    "createRepository": "创建私人仓库",
     "token": "个人访问令牌",
     "tokenPlaceholder": "粘贴 fine-grained Token",
     "tokenHelp": "选择 Only select repositories，指定笔记仓库，并授予 Issues: Read and write。无需 Contents 或仓库管理权限。",

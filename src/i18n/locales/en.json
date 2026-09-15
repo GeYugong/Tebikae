@@ -57,6 +57,8 @@
     "formIntro": "Connect a private repository to start your notebook.",
     "repository": "GitHub repository",
     "repositoryPlaceholder": "owner / repository or GitHub URL",
+    "noRepository": "No repository yet?",
+    "createRepository": "Create a private repository",
     "token": "Personal access token",
     "tokenPlaceholder": "Paste your fine-grained token",
     "tokenHelp": "Choose Only select repositories, select your notes repository, and grant Issues: Read and write. No Contents or administration access is needed.",
