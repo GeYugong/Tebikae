@@ -2,6 +2,8 @@
 
 日期：2026-09-16。版本：0.1.0。依据：[产品架构与验收清单](github-issues-notes-product-architecture.md)。
 
+以下保留首次交付时的验收结果，其中 Token 仅存内存的记录属于当时实现。当前可勾选记住连接，加密保存在浏览器并自动恢复，行为与边界见[连接与使用](getting-started.md#数据与隐私)；对应回归测试位于 `tests/saved-session.test.ts` 和 `tests/e2e/session.spec.ts`。
+
 本次交付包含前端源码、锁文件、自动化测试、静态构建、CI 和手动触发的 Pages 工作流。没有执行提交、推送或线上部署。应用品牌为 Tebikae，远端数据协议沿用文档约定的 `issue-notes` 标记。
 
 ## 自动化结果

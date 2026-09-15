@@ -35,10 +35,10 @@ export default function Settings({ onConnect, offlineReady }: { onConnect(): voi
       .count();
     if (!confirm(t('settings.clearConfirm', { count: pending }))) return;
     setBusy(true);
-    session.disconnect();
     try {
+      await session.disconnect();
       await clearScope(connection.scopeId);
-      session.leave();
+      await session.leave();
     } catch {
       setNotice(t('error.storage'));
     } finally {
@@ -84,11 +84,11 @@ export default function Settings({ onConnect, offlineReady }: { onConnect(): voi
         <p className="repository-name">
           {connection.owner}/{connection.repo}
         </p>
-        <p>{t('settings.tokenMemory')}</p>
+        <p>{t(session.remembered ? 'settings.tokenStorage' : 'settings.tokenMemory')}</p>
         <p>{t('settings.syncLimit')}</p>
         <div className="button-row">
-          {session.connected ? (
-            <button className="button secondary" onClick={session.disconnect}>
+          {session.connected || session.remembered ? (
+            <button className="button secondary" onClick={() => void session.disconnect().catch(() => {})}>
               <LogOut size={16} />
               {t('action.disconnect')}
             </button>
@@ -97,7 +97,7 @@ export default function Settings({ onConnect, offlineReady }: { onConnect(): voi
               {t('action.connect')}
             </button>
           )}
-          <button className="text-button" onClick={session.leave}>
+          <button className="text-button" onClick={() => void session.leave().catch(() => {})}>
             {t('action.close')}
           </button>
         </div>

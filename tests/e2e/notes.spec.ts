@@ -18,7 +18,7 @@ test('connect and unchanged reading keep existing Issues intact', async ({ page,
   expect(remote.issues[0]!.body).toBe(initialBody);
 });
 
-test('a visual draft is saved locally, synced once, and available after token-free reload', async ({
+test('a visual draft is saved locally, synced once, and available after automatic reconnection', async ({
   page,
   context,
 }) => {
@@ -35,8 +35,6 @@ test('a visual draft is saved locally, synced once, and available after token-fr
   expect(remote.issues.find((issue) => issue.title === 'A fresh browser note')?.body).toContain('中文内容');
   await closeDialog(page);
   await page.reload();
-  await expect(page.getByLabel('Personal access token', { exact: true })).toHaveValue('');
-  await page.getByRole('button', { name: 'scarletkc/Tebikae-dev', exact: true }).click();
   await expect(
     page.getByRole('button', { name: 'Edit note: A fresh browser note', exact: true }),
   ).toBeVisible();
@@ -46,7 +44,7 @@ test('a visual draft is saved locally, synced once, and available after token-fr
   expect(storage).not.toContain('browser-test-token');
 });
 
-test('offline input persists locally and reopens without a token', async ({ page, context }) => {
+test('offline input persists locally and reopens without entering a token', async ({ page, context }) => {
   const remote = await mockGitHub(context);
   await connect(page);
   await page.getByRole('button', { name: 'Edit note: Weekend ideas', exact: true }).click();
@@ -58,10 +56,9 @@ test('offline input persists locally and reopens without a token', async ({ page
     page.getByRole('button', { name: 'Edit note: Edited while offline', exact: true }),
   ).toBeVisible();
   expect(remote.issues[0]!.title).toBe('Weekend ideas');
-  // Reload the static dev shell online; the connection token is intentionally absent.
+  // Restore the saved connection when the dev shell can be loaded again.
   await context.setOffline(false);
   await page.reload();
-  await page.getByRole('button', { name: 'scarletkc/Tebikae-dev', exact: true }).click();
   await expect(
     page.getByRole('button', { name: 'Edit note: Edited while offline', exact: true }),
   ).toBeVisible();
@@ -125,7 +122,7 @@ test('a second tab is read-only while the first owns this repository', async ({ 
   const remote = await mockGitHub(context);
   await connect(page);
   const second = await context.newPage();
-  await connect(second);
+  await second.goto('/');
   await expect(
     second.getByText('This repository is open for editing in another tab. This tab is read-only.', {
       exact: true,

@@ -1,6 +1,19 @@
 import { expect, type BrowserContext, type Page, type TestInfo } from '@playwright/test';
 import type { OutageServer } from './fixtures';
 
+/** WebKit routing does not intercept every fetch from a Service Worker-controlled page. */
+export async function blockGitHubAfterReload(context: BrowserContext) {
+  await context.addInitScript(() => {
+    const original = globalThis.fetch.bind(globalThis);
+    globalThis.fetch = (input, init) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (new URL(url, location.href).origin === 'https://api.github.com')
+        return Promise.reject(new TypeError('GitHub is offline in this test'));
+      return original(input, init);
+    };
+  });
+}
+
 export async function disconnectNetwork(
   context: BrowserContext,
   page: Page,

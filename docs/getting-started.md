@@ -4,7 +4,7 @@
 
 1. 在 GitHub.com 创建或选择你自己拥有的**私人仓库**，启用 Issues。
 2. 打开 [fine-grained Token 创建页](https://github.com/settings/personal-access-tokens/new?name=Tebikae&issues=write&expires_in=90)。选择 `Only select repositories`，指定笔记仓库，将 `Issues` 设为 `Read and write`。
-3. 在 Tebikae 中填写 `owner/repo` 或完整 GitHub 仓库网址，粘贴 Token，点击连接。
+3. 在 Tebikae 中填写 `owner/repo` 或完整 GitHub 仓库网址，粘贴 Token。需要下次自动恢复时，勾选“在此浏览器记住连接”，然后点击连接。此选项默认不勾选；不勾选时 Token 仅保留在当前页面内存，刷新或关闭网页后需重新连接。勾选并成功连接后，连接信息会加密保存，在同一浏览器、同一网站再次打开时自动恢复。
 
 Metadata 只读是 GitHub 的基础权限；不需要 Contents、Actions 或仓库管理权限。Token 预填链接不会替你选择仓库。
 
@@ -31,7 +31,7 @@ Metadata 只读是 GitHub 的基础权限；不需要 Contents、Actions 或仓�
 
 ## 断网、冲突与错误
 
-刷新会清除 Token，但保留草稿。首页可主动打开已知缓存，无需 Token；这不是独立的本地登录保护。恢复网络并重新连接后，先读取 GitHub 再处理队列。关闭网页或 PWA 后不保证继续同步。
+选择记住连接后，刷新或重新打开时会先恢复本地笔记，再验证保存的 GitHub 连接。离线时可继续编辑缓存；恢复网络后自动重试连接，先读取 GitHub 再处理队列。暂时断网不会删除保存的凭据；Token 失效或权限验证失败时会提示重新连接，本地笔记和草稿仍保留。没有保存的连接时，首页也可主动打开已知缓存。关闭网页或 PWA 后不保证继续同步。
 
 创建请求超时可能已经成功。应用先扫描 Issues，通过笔记 UUID 找回原 Issue，不自动再次 POST。“再次创建”会提示可能重复。相同 UUID 的多个 Issue 暂停自动写入，可以选择原笔记，将其余条目拆为独立副本。
 
@@ -41,10 +41,12 @@ Metadata 只读是 GitHub 的基础权限；不需要 Contents、Actions 或仓�
 
 ## 数据与隐私
 
-Token 仅保留在当前页内存，只通过授权请求头发往 `https://api.github.com`。不会写入 URL、localStorage、IndexedDB、Service Worker 或导出文件。应用不使用第三方统计、远程字体或错误内容上传。
+仅在勾选“在此浏览器记住连接”并成功连接后，浏览器才通过 Web Crypto 的 AES-256-GCM 加密 Token 与连接信息，将密文、随机 IV 和不可导出的 `CryptoKey` 保存在独立的 IndexedDB 数据库中。每次保存生成新密钥和 IV；笔记导出不包含密文或密钥。Token 明文仅在页面运行时使用，只通过授权请求头发往 `https://api.github.com`，不写入 URL、localStorage、sessionStorage、Service Worker、导出或日志。应用不使用第三方统计、远程字体或错误内容上传。
+
+为了免输入密码自动恢复，解密密钥也保存在同一浏览器中。这能避免 Token 以明文保存，但不是独立密码保护或端到端加密，不能防住恶意同源脚本、可访问网站数据的扩展或有权使用此浏览器的人。只在可信任的浏览器中连接；共用设备上用完后请断开连接。Web Crypto 需要 HTTPS 或 localhost；加密或存储不可用时仅保留当前会话并提示下次需重新填写，不会降级为明文保存。清除网站数据、隐私窗口关闭或浏览器回收存储后，也需要重新连接。
 
 笔记 Markdown 以明文存于 GitHub；本地缓存同样没有端到端加密。托管站点所提供的 JavaScript 在运行时能接触页面输入，不应将纯前端理解为恶意站点无法取得数据。
 
-设置页区分断开连接和清除当前仓库的设备数据。清除操作会显示未同步笔记数量；如需保留请先导出。JSON 导出包括加载过的原始 Issue、笔记、草稿、尝试记录、冲突和恢复副本。离线／未完成完整拉取时标为部分导出，不含评论和附件文件。Issues 不在 Git 提交中，`git clone` 不会备份笔记。
+设置页的“断开 GitHub 连接”和“关闭”都会移除保存的凭据及密钥，保留本地笔记。“清除此设备的数据”还会移除当前仓库的本地数据；清除前会显示未同步笔记数量，如需保留请先导出。JSON 导出包括加载过的原始 Issue、笔记、草稿、尝试记录、冲突和恢复副本。离线／未完成完整拉取时标为部分导出，不含评论和附件文件。Issues 不在 Git 提交中，`git clone` 不会备份笔记。
 
 权限和限流依据：[GitHub PAT 文档](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens)、[Issues API](https://docs.github.com/en/rest/issues/issues)、[REST API 最佳实践](https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api)。

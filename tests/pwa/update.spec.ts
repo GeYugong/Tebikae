@@ -1,6 +1,7 @@
 import { expect } from '@playwright/test';
 import { test } from './fixtures';
 import { connect, mockGitHub } from '../e2e/fixtures';
+import { blockGitHubAfterReload } from './network';
 
 test('update waiting preserves the open editor until the user saves and accepts it', async ({
   page,
@@ -10,8 +11,9 @@ test('update waiting preserves the open editor until the user saves and accepts 
   await mockGitHub(context);
   await connect(page);
   await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
+  await context.unroute('https://api.github.com/**');
+  await blockGitHubAfterReload(context);
   await page.reload();
-  await page.getByRole('button', { name: 'scarletkc/Tebikae-dev', exact: true }).click();
   await page.getByRole('button', { name: 'Edit note: Weekend ideas', exact: true }).click();
   await expect(page.locator('.ProseMirror[contenteditable="true"]')).toBeVisible();
   await page.locator('.ProseMirror[contenteditable="true"]').fill('Keep this draft through an app update.');
@@ -34,8 +36,7 @@ test('update waiting preserves the open editor until the user saves and accepts 
     .locator('.ProseMirror[contenteditable="true"]')
     .fill('A final edit immediately before accepting the update.');
   await page.getByRole('dialog').getByRole('button', { name: 'Save drafts and update', exact: true }).click();
-  await expect(page.getByLabel('Personal access token', { exact: true })).toHaveValue('');
-  await page.getByRole('button', { name: 'scarletkc/Tebikae-dev', exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.getByRole('button', { name: 'Edit note: Weekend ideas', exact: true }).click();
   await expect(page.locator('.ProseMirror')).toContainText(
     'A final edit immediately before accepting the update.',

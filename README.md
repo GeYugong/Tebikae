@@ -15,7 +15,7 @@ pnpm dev
 
 Open the printed local address. Connect a private repository you own and a fine-grained personal access token limited to that repository, with **Issues: Read and write**. Connecting only reads data. See [connection and privacy](docs/getting-started.md).
 
-The token stays in the current tab's memory. After a refresh, reconnect to sync or open the cached notebook to work locally. “Saved to this device” and “Synced to GitHub” are separate states.
+Select **Remember this connection in this browser** to save your connection with encryption and restore it when you return. This option is off by default; otherwise the token stays in the current tab's memory. Disconnect in Settings to remove saved credentials. See [connection and privacy](docs/getting-started.md#数据与隐私) for the local encryption limits. “Saved to this device” and “Synced to GitHub” are separate states.
 
 ## Included
 

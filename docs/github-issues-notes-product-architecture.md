@@ -63,7 +63,7 @@ Issues 属于 GitHub 平台数据，不属于 Git 提交中的文件。备份方
 | 数据位置 | 用户自己的 GitHub.com 私有仓库，使用 Issues 存储 |
 | 第一版连接范围 | 一个账号、一个当前仓库；数据库结构预留多个连接的隔离能力 |
 | 认证方式 | 用户提供 fine-grained PAT，限定目标仓库 |
-| 凭证保存 | 第一版 Token 仅保留在页面内存；刷新后重新连接，笔记缓存和草稿仍保留 |
+| 凭证保存 | 默认仅当前会话；勾选记住连接后本地加密保存并自动恢复，断开时移除凭据及密钥 |
 | 永久记住 Token | 后续增加口令加密保存，不作为第一版依赖 |
 | 核心笔记类型 | Markdown 文本、简单待办清单 |
 | 编辑器 | Milkdown 可视化 Markdown 编辑器，默认所见即所得，保留 Markdown 源码模式 |
@@ -301,7 +301,7 @@ flowchart TD
     Commands --> Local["IndexedDB：笔记、草稿、队列"]
     Local --> UI
     Sync["同步调度器"] <--> Local
-    Vault["页面内存中的 Token"] --> Sync
+    Vault["本地加密连接 → 页面内存中的 Token"] --> Sync
     Sync <--> GitHub["GitHub API 与用户私有仓库"]
 ```
 
@@ -317,7 +317,7 @@ flowchart TD
 | Local Store | 本地记录、草稿、待提交操作、同步快照 | 把数据库缓存视作远端写入成功 |
 | Sync Engine | 排队、拉取、去重、重试、冲突检测、保存状态 | 生成 UI 或静默覆盖冲突内容 |
 | GitHub Adapter | 认证请求、分页、响应映射、错误分类 | 隐式自动重试有歧义的创建请求 |
-| Credential Provider | 为当前连接提供内存中的 Token，执行断开 | 在 URL、日志或导出中暴露 Token |
+| Credential Provider / Saved Session | 提供运行时 Token、本地加密保存与恢复、断开时清除凭据 | 在 URL、日志或导出中暴露 Token |
 | Service Worker | 缓存应用外壳，管理前端版本更新 | 保存 PAT、缓存 GitHub API 响应或后台提交笔记 |
 
 所有远端写入经过同一条命令与同步路径。颜色、置顶、清单勾选等小操作也不能独立绕过该路径，否则容易用旧正文覆盖正在编辑的内容。
@@ -536,7 +536,7 @@ scopeId = github.com:<viewerUserId>:<repositoryId>
 | `httpCache` | scopeId、url、accept、apiVersion、etag、response、link | 只存安全响应与必要缓存头 |
 | `recovery` | scopeId、localId、createdAt、reason、snapshot | 冲突和覆盖前的本地恢复副本 |
 
-`httpCache` 不存授权请求头。UI 偏好独立保存在 localStorage；PAT 仅由内存中的 Credential Provider 持有。
+`httpCache` 不存授权请求头。UI 偏好独立保存在 localStorage；PAT 明文由内存中的 Credential Provider 持有。加密连接及不可导出密钥存于独立的 `tebikae-session` IndexedDB，不进入笔记数据表或导出。
 
 ### 8.3 一条笔记的三个版本
 
@@ -799,9 +799,11 @@ pnpm preview
 
 ### 11.1 第一版凭证策略
 
-Token 输入后仅留在当前页面内存，不进入 localStorage、sessionStorage、IndexedDB、URL、Service Worker、导出文件或错误日志。刷新后需要重新填写，重新连接同一仓库会恢复原有草稿与队列。
+连接表单提供默认不勾选的“在此浏览器记住连接”。不勾选时 Token 仅在当前页面内存中使用；勾选并连接成功后，Web Crypto 使用新生成的不可导出 AES-256-GCM 密钥及随机 96 位 IV，加密 Token 和连接信息，将密文、密钥、IV、版本及记录代次原子保存到独立的 IndexedDB。Token 明文不进入 localStorage、sessionStorage、IndexedDB、URL、Service Worker、导出文件或错误日志。
 
-应用只向 GitHub API 发送该 Token。运行时取得 Token 的代码集中在 Credential Provider，UI 与 Domain 不接触它。断开时停止调度、清除内存凭证并增加会话代次；已经发送的请求可能仍在远端完成，下次连接时按未知结果处理。
+再次打开时先恢复本地笔记，再验证 GitHub 身份、仓库权限和稳定 scope，验证通过后才启动同步。离线或暂时网络故障保留凭据，联网、页面重新可见及前台定时检查时自动重试；失效凭据或损坏记录被移除，保留笔记并提示重新连接。加密失败时仅保持当前会话并显示保存失败提示，不允许明文回退。Web Crypto 需要安全上下文（HTTPS 或 localhost）。
+
+应用只向 GitHub API 发送该 Token。运行时 Token 由 Credential Provider 提供，Domain 不接触它。断开时停止调度、清除内存凭证和保存的密文及密钥，并增加会话代次；自动恢复不会重新写入凭据，迟到响应不能撤销断开操作。已经发送的请求可能仍在远端完成，下次连接时按未知结果处理。
 
 官方托管的 JavaScript 能接触用户输入的 Token 与笔记。开源、限制第三方脚本、可复现构建有助于建立信任，但不能把普通纯前端部署宣传成官方技术上绝不可能接触数据。
 
@@ -840,11 +842,13 @@ X-Content-Type-Options: nosniff
 
 ### 11.4 本地数据与退出
 
-设置页区分“断开 GitHub 连接”与“清除此设备的数据”。前者保留可恢复草稿；后者移除所选 scope 的本地笔记、缓存、队列与恢复副本，远端 Issues 不变。
+设置页的“断开 GitHub 连接”和“关闭”均移除保存的凭据及密钥并保留本地笔记；“清除此设备的数据”还移除所选 scope 的本地笔记、缓存、队列与恢复副本，远端 Issues 不变。
 
 存在未同步内容时，清除前展示数量并提供导出，避免误认为本地草稿已存入 GitHub。再次打开应用可由用户选择离线打开已知缓存，但必须说明缓存仅保存在当前浏览器，不是独立登录保护的保险箱。
 
-### 11.5 后续加密记住 Token
+### 11.5 自动恢复的加密边界与后续口令保护
+
+当前实现为免填写自动恢复，将不可导出密钥与密文保存在同一浏览器。不可导出仅限制 Web Crypto 的导出操作，不阻止同源脚本调用解密，也不保证浏览器配置文件被复制后凭据仍受独立保护。该机制避免明文存储，不构成独立登录保护或端到端加密。[Web Crypto 安全边界](https://www.w3.org/TR/WebCryptoAPI/#security-considerations)
 
 P1 可使用用户输入的本地口令，通过 Web Crypto 派生密钥、用 AES-GCM 加密 Token，仅持久保存密文、盐、IV、算法和派生参数。口令与解密密钥只在内存中，忘记口令时重新配置 Token。
 
@@ -927,7 +931,7 @@ Service Worker 注册代码放入同源构建脚本，避免插件生成未经 C
 
 检测到新版本时显示更新入口。用户确认更新前完成本地保存；尚未发出的任务保持排队，已发送但未确认的任务在重载后标为待核对。不要强制自动刷新正在输入的页面。
 
-浏览器关闭、手机系统终止 PWA 后不保证继续同步。离线重新打开可以读写本地缓存，填写有效 Token 并恢复前台运行后才能提交远端。
+浏览器关闭、手机系统终止 PWA 后不保证继续同步。离线重新打开可以读写本地缓存，恢复前台运行并自动验证保存的连接后才能提交远端；凭据失效时需重新填写。
 
 ### 13.4 发布与回滚
 
@@ -946,7 +950,7 @@ Service Worker 注册代码放入同源构建脚本，避免插件生成未经 C
 | M2：首版功能完整 | 分类标签、属性筛选、预览导航、清单、颜色、置顶、归档、回收站 | 所有 F01–F18 的正常操作可用，中英文与两种主题覆盖完整 |
 | M3：同步可靠性 | 分页、增量拉取、冲突、未知创建、限流、标签页互斥、恢复与导出 | 通过下表中的数据可靠性场景 |
 | M4：发布准备 | 静态部署、PWA、手机交互、性能与真实仓库验收 | 无业务后端依赖，可以交给实际用户使用 |
-| P1：体验扩展 | 加密记住 Token、多仓库、评论、导入与附件方案 | 逐项独立设计和交付 |
+| P1：体验扩展 | 可选本地口令保护、多仓库、评论、导入与附件方案 | 逐项独立设计和交付 |
 | P2：AI 插件 | MCP＋Skill | 完成第 15 节目标，第一版功能不依赖这一阶段 |
 
 实施按完整功能切片推进，例如先完成一张笔记从本地输入到远端保存再恢复的全过程，再扩展整理与筛选。不要先把所有页面画完后才开始验证 GitHub 写入和编辑器兼容。

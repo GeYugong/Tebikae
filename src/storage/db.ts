@@ -12,7 +12,7 @@ import type {
 
 export type StoredLabel = Label & { scopeId: string };
 
-/** Credentials are deliberately excluded from every persistent table. */
+/** Notebook tables exclude credentials; the encrypted session has a separate database. */
 export class TebikaeDB extends Dexie {
   connections!: Table<Connection, string>;
   notes!: Table<LocalNote, [string, string]>;

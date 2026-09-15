@@ -207,10 +207,15 @@ export async function mockGitHub(
   });
   return state;
 }
-export async function connect(page: Page): Promise<void> {
+export async function connect(page: Page, remember = true): Promise<void> {
   await page.goto('/');
   await page.getByLabel('GitHub repository', { exact: true }).fill('scarletkc/Tebikae-dev');
   await page.getByLabel('Personal access token', { exact: true }).fill('browser-test-token');
+  await expect(
+    page.getByRole('checkbox', { name: 'Remember this connection in this browser' }),
+  ).not.toBeChecked();
+  if (remember)
+    await page.getByRole('checkbox', { name: 'Remember this connection in this browser' }).check();
   await page.getByRole('button', { name: 'Connect repository', exact: true }).click();
   await expect(
     page

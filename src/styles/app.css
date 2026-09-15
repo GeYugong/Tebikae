@@ -470,7 +470,9 @@ kbd {
   align-self: center;
 }
 .connect-form {
-  padding: 34px;
+  display: grid;
+  gap: 24px;
+  padding: 32px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 18px;
@@ -484,23 +486,37 @@ kbd {
   background: var(--accent-soft);
   color: var(--accent);
   border-radius: 15px;
-  margin-bottom: 22px;
+  margin-bottom: 8px;
+}
+.connect-form-header {
+  display: grid;
+  gap: 8px;
 }
 .connect-form h2 {
   font-size: 23px;
   letter-spacing: -0.7px;
   font-weight: 650;
 }
-.connect-form > p:first-of-type {
+.connect-form-header p {
   color: var(--muted);
   font-size: 13px;
-  margin: 9px 0 27px;
 }
-.connect-form > label {
+.connect-field {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.connect-field > label {
   display: block;
-  margin-bottom: 19px;
 }
-.connect-form input {
+.connect-actions {
+  display: grid;
+  gap: 16px;
+}
+.connect-actions .error-box {
+  margin: 0;
+}
+.connect-form input:not([type='checkbox']) {
   height: 44px;
   font-size: 12px;
 }
@@ -516,15 +532,18 @@ kbd {
   gap: 3px;
   margin-top: 7px;
 }
+.connect-field .field-help,
+.connect-field .field-help a {
+  margin: 0;
+}
 .privacy-note {
   display: flex;
   gap: 9px;
   color: var(--muted);
   font-size: 10px;
   line-height: 1.8;
-  margin-top: 20px;
   border-top: 1px solid var(--border);
-  padding-top: 18px;
+  padding-top: 16px;
 }
 .privacy-note svg {
   margin-top: 3px;
@@ -1424,7 +1443,7 @@ kbd {
   border: 0;
   box-shadow: none;
   border-radius: 0;
-  padding: 22px 30px;
+  padding: 24px;
 }
 .issue-dialog {
   width: min(94vw, 780px);
@@ -1575,7 +1594,7 @@ kbd {
     font-size: 43px;
   }
   .connect-form {
-    padding: 28px;
+    padding: 24px;
   }
   .sample-notes {
     transform: scale(0.9);
@@ -1824,9 +1843,6 @@ kbd {
   }
   .welcome-intro h1 {
     font-size: 35px;
-  }
-  .connect-form {
-    padding: 25px 22px;
   }
   .welcome-header .preferences-controls select {
     width: 85px;

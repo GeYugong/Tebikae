@@ -23,6 +23,7 @@ export function ConnectForm({ onConnected }: { onConnected?: () => void }) {
     session.connection ? `${session.connection.owner}/${session.connection.repo}` : '',
   );
   const [token, setToken] = useState('');
+  const [remember, setRemember] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   async function submit(event: FormEvent) {
@@ -30,7 +31,7 @@ export function ConnectForm({ onConnected }: { onConnected?: () => void }) {
     setError('');
     setBusy(true);
     try {
-      await session.connect(repository.trim(), token.trim());
+      await session.connect(repository.trim(), token.trim(), remember);
       setToken('');
       onConnected?.();
     } catch (error) {
@@ -41,70 +42,88 @@ export function ConnectForm({ onConnected }: { onConnected?: () => void }) {
   }
   return (
     <form onSubmit={(e) => void submit(e)} className="connect-form">
-      <div className="form-symbol">
-        <GitBranch size={26} />
+      <div className="connect-form-header">
+        <div className="form-symbol">
+          <GitBranch size={26} />
+        </div>
+        <h2>{t('connect.formTitle')}</h2>
+        <p>{t('connect.formIntro')}</p>
       </div>
-      <h2>{t('connect.formTitle')}</h2>
-      <p>{t('connect.formIntro')}</p>
-      <label>
-        {t('connect.repository')}
-        <input
-          autoFocus
-          value={repository}
-          onChange={(e) => setRepository(e.target.value)}
-          placeholder={t('connect.repositoryPlaceholder')}
-          required
-          autoCapitalize="none"
-          autoCorrect="off"
-          spellCheck={false}
-          disabled={busy}
-        />
-      </label>
-      <p className="field-help">
-        {t('connect.noRepository')}{' '}
-        <a
-          href="https://github.com/new?name=tebikae-notes&visibility=private&owner=%40me"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          {t('connect.createRepository')} <ArrowUpRight size={13} />
-        </a>
-      </p>
-      <label>
-        {t('connect.token')}
-        <input
-          value={token}
-          onChange={(e) => setToken(e.target.value)}
-          type="password"
-          placeholder={t('connect.tokenPlaceholder')}
-          required
-          autoComplete="off"
-          spellCheck={false}
-          disabled={busy}
-        />
-      </label>
-      <p className="field-help">
-        {t('connect.tokenHelp')}{' '}
-        <a
-          href="https://github.com/settings/personal-access-tokens/new?name=Tebikae&issues=write&expires_in=90"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          {t('connect.createToken')} <ArrowUpRight size={13} />
-        </a>
-      </p>
-      {error && (
-        <p role="alert" className="error-box">
-          {t(`error.${error}`)}
+      <div className="connect-field">
+        <label>
+          {t('connect.repository')}
+          <input
+            autoFocus
+            value={repository}
+            onChange={(e) => setRepository(e.target.value)}
+            placeholder={t('connect.repositoryPlaceholder')}
+            required
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            disabled={busy}
+          />
+        </label>
+        <p className="field-help">
+          {t('connect.noRepository')}{' '}
+          <a
+            href="https://github.com/new?name=tebikae-notes&visibility=private&owner=%40me"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {t('connect.createRepository')} <ArrowUpRight size={13} />
+          </a>
         </p>
-      )}
-      <button className="button primary wide" type="submit" disabled={busy}>
-        {busy ? <LoaderCircle className="spin" size={18} /> : <GitBranch size={18} />}{' '}
-        {t(busy ? 'action.connecting' : 'action.connect')} {!busy && <ArrowRight size={18} />}
-      </button>
+      </div>
+      <div className="connect-field">
+        <label>
+          {t('connect.token')}
+          <input
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            type="password"
+            placeholder={t('connect.tokenPlaceholder')}
+            required
+            autoComplete="off"
+            spellCheck={false}
+            disabled={busy}
+          />
+        </label>
+        <p className="field-help">
+          {t('connect.tokenHelp')}{' '}
+          <a
+            href="https://github.com/settings/personal-access-tokens/new?name=Tebikae&issues=write&expires_in=90"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {t('connect.createToken')} <ArrowUpRight size={13} />
+          </a>
+        </p>
+      </div>
+      <div className="connect-actions">
+        <label className="check-label">
+          <input
+            type="checkbox"
+            checked={remember}
+            onChange={(e) => setRemember(e.target.checked)}
+            disabled={busy}
+            aria-describedby="connection-privacy"
+          />
+          {t('connect.remember')}
+        </label>
+        {(error || session.notice) && (
+          <p role="alert" className="error-box">
+            {t(`error.${error || session.notice}`)}
+          </p>
+        )}
+        <button className="button primary wide" type="submit" disabled={busy}>
+          {busy ? <LoaderCircle className="spin" size={18} /> : <GitBranch size={18} />}{' '}
+          {t(busy ? 'action.connecting' : 'action.connect')} {!busy && <ArrowRight size={18} />}
+        </button>
+      </div>
       <div className="privacy-note">
         <LockKeyhole size={16} />
-        <span>{t('connect.privacy')}</span>
+        <span id="connection-privacy">{t(remember ? 'connect.privacy' : 'connect.sessionPrivacy')}</span>
       </div>
     </form>
   );

@@ -13,6 +13,7 @@
 | 筛选     | `src/domain/filters.ts`         | 时间边界、标签匹配、排序与标签计数                     |
 | GitHub   | `src/adapters/github/client.ts` | 固定 API 版本、受信分页、条件 GET、错误分类、串行请求  |
 | 凭证     | `src/security/credentials.ts`   | 仅内存 Token 与会话代次                                |
+| 连接保存 | `src/security/saved-session.ts` | 独立 IndexedDB 中的加密连接、不可导出密钥与恢复校验    |
 | 数据库   | `src/storage/db.ts`             | `github.com:<viewerId>:<repoId>` 隔离、Dexie schema v1 |
 | 命令     | `src/application/commands.ts`   | 原子保存文档与 outbox、字段意图、转换、冲突选择、导出  |
 | 同步     | `src/sync/engine.ts`            | 远端核对、冻结尝试、版本确认、UUID 找回、恢复副本      |

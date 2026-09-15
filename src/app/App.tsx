@@ -99,7 +99,11 @@ export default function App() {
   };
   return (
     <PwaUpdateContext.Provider value={{ available: updateReady, update: applyUpdate }}>
-      {session.connection ? (
+      {session.restoring ? (
+        <main className="loading-notice" role="status">
+          {t('connect.restoring')}
+        </main>
+      ) : session.connection ? (
         <Workspace key={session.connection.scopeId} offlineReady={offlineReady} />
       ) : (
         <ConnectPage />
@@ -396,13 +400,15 @@ function Workspace({ offlineReady }: { offlineReady: boolean }) {
           </div>
         </header>
         <main className="main-content">
-          {notice && (
+          {(notice || session.notice) && (
             <div role="alert" className="banner error-banner">
               <CircleAlert size={17} />
-              <span>{notice}</span>
-              <IconButton label={t('action.close')} onClick={() => setNotice('')}>
-                <X size={16} />
-              </IconButton>
+              <span>{notice || t(`error.${session.notice}`)}</span>
+              {notice && (
+                <IconButton label={t('action.close')} onClick={() => setNotice('')}>
+                  <X size={16} />
+                </IconButton>
+              )}
             </div>
           )}
           {!online ? (

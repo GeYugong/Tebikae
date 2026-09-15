@@ -3,7 +3,7 @@ import { test } from './fixtures';
 import { connect, mockGitHub } from '../e2e/fixtures';
 import en from '../../src/i18n/locales/en.json' with { type: 'json' };
 import zh from '../../src/i18n/locales/zh-CN.json' with { type: 'json' };
-import { disconnectNetwork } from './network';
+import { blockGitHubAfterReload, disconnectNetwork } from './network';
 
 for (const language of ['en', 'zh-CN'] as const) {
   test(`production shell and first editor use work after a fully offline reload (${language})`, async ({
@@ -34,14 +34,14 @@ for (const language of ['en', 'zh-CN'] as const) {
     expect(cached.editorLoadedByPage).toBe(false);
     expect(cached.urls.some((url) => /\/MarkdownEditor-[^/]+\.js/u.test(url))).toBe(true);
     await context.unroute('https://api.github.com/**');
+    await blockGitHubAfterReload(context);
     // A second navigation is controlled by the now activated worker.
     await page.reload({ waitUntil: 'domcontentloaded' });
     await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
     await disconnectNetwork(context, page, outageServer, info);
     await page.reload({ waitUntil: 'domcontentloaded' });
-    await expect(page.getByLabel(copy.connect.token, { exact: true })).toHaveValue('');
+    await expect(page.getByLabel(copy.home.search, { exact: true })).toBeVisible();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-    await page.getByRole('button', { name: 'scarletkc/Tebikae-dev', exact: true }).click();
     await page.locator('.note-card').filter({ hasText: 'Weekend ideas' }).locator('.note-open').click();
     await expect(page.locator('.ProseMirror[contenteditable="true"]')).toBeVisible();
     await page
@@ -54,7 +54,6 @@ for (const language of ['en', 'zh-CN'] as const) {
       .click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await page.reload({ waitUntil: 'domcontentloaded' });
-    await page.getByRole('button', { name: 'scarletkc/Tebikae-dev', exact: true }).click();
     await page.locator('.note-card').filter({ hasText: 'Weekend ideas' }).locator('.note-open').click();
     await expect(page.locator('.ProseMirror')).toContainText('首次离线编辑');
     await expect(page.getByRole('button', { name: copy.action.save, exact: true })).toBeDisabled();
@@ -62,7 +61,7 @@ for (const language of ['en', 'zh-CN'] as const) {
   });
 }
 
-test('production caches contain shell files only and persistent storage contains no token', async ({
+test('production caches contain shell files only and persistent storage contains no plaintext token', async ({
   page,
   context,
 }) => {
@@ -73,24 +72,29 @@ test('production caches contain shell files only and persistent storage contains
     const urls: string[] = [];
     for (const name of await caches.keys())
       for (const request of await (await caches.open(name)).keys()) urls.push(request.url);
-    const database = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open('tebikae');
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-    const names = Array.from(database.objectStoreNames);
-    const transaction = database.transaction(names, 'readonly');
-    const data = await Promise.all(
-      names.map(
-        (name) =>
-          new Promise<unknown>((resolve, reject) => {
-            const request = transaction.objectStore(name).getAll();
-            request.onsuccess = () => resolve(request.result);
-            request.onerror = () => reject(request.error);
-          }),
-      ),
-    );
-    database.close();
+    const data: unknown[] = [];
+    for (const databaseName of ['tebikae', 'tebikae-session']) {
+      const database = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open(databaseName);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      const names = Array.from(database.objectStoreNames);
+      const transaction = database.transaction(names, 'readonly');
+      data.push(
+        ...(await Promise.all(
+          names.map(
+            (name) =>
+              new Promise<unknown>((resolve, reject) => {
+                const request = transaction.objectStore(name).getAll();
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error);
+              }),
+          ),
+        )),
+      );
+      database.close();
+    }
     return {
       urls,
       persistent: JSON.stringify({ data, local: { ...localStorage }, session: { ...sessionStorage } }),

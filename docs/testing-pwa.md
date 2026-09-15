@@ -29,14 +29,16 @@ pnpm exec playwright test --config playwright.pwa.config.ts
 ## 覆盖内容
 
 - 应用外壳完成预缓存后，切断网络并重新载入页面；首次打开此前没有加载过的可视化编辑器，编辑、关闭、再刷新后读取本地草稿。
-- 简体中文与英文分别执行以上流程，暗色偏好保持，刷新后的 Token 输入框为空。
-- 检查 Cache Storage 只有同源应用资源，GitHub API 响应未进入 Service Worker 缓存；检查 IndexedDB、localStorage、sessionStorage 不含测试凭证。
+- 简体中文与英文分别勾选记住连接并执行以上流程，暗色偏好保持，刷新后自动打开保存的笔记本，无需重新填写连接。
+- 检查 Cache Storage 只有同源应用资源，GitHub API 响应未进入 Service Worker 缓存；检查笔记及连接的 IndexedDB、localStorage、sessionStorage 不含明文测试凭证。
 - 在 `/Tebikae/` 下检查 JavaScript、样式、manifest、图标、Service Worker URL 与 scope；直接打开 Hash 路由并在失去网络后刷新。
 - 更改测试服务器返回的 Service Worker 字节，触发等待更新，检查编辑期间不自动刷新，以及用户接受更新后的草稿恢复。
 
 ## 验证范围
 
 Chromium 与 Firefox 使用 Playwright 的离线模式。测试先确认 Worker 已激活，并通过一次导航确认页面已受其控制；未完成安装前不承诺离线启动。
+
+离线与更新用例在重新加载前注入仅阻止 GitHub API 的测试 fetch，以免受 Service Worker 控制的页面绕过浏览器路由拦截、将测试 Token 发往真实 API。应用外壳的请求与缓存仍由真实浏览器和 Service Worker 处理；自动验证连接和联网恢复由常规浏览器用例覆盖。
 
 Windows Playwright WebKit 在已受控页面上调用离线模式后刷新，会报告浏览器内部错误。WebKit 场景使用隔离的生产静态服务器：预缓存完成后，服务器关闭每个新请求的 socket，并以未缓存资源请求确实失败作为断网证据。这验证 Service Worker 在源站不可达时的恢复能力，但此时 `navigator.onLine` 仍为真。真实 Safari／iOS 的飞行模式与安装后的独立 PWA 仍需设备检查。
 

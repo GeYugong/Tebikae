@@ -57,6 +57,7 @@ async function main() {
   await page.goto('/');
   await page.getByLabel('GitHub repository', { exact: true }).fill(repository);
   await page.getByLabel('Personal access token', { exact: true }).fill(token);
+  await page.getByRole('checkbox', { name: 'Remember this connection in this browser' }).check();
   await page.getByRole('button', { name: 'Connect repository', exact: true }).click();
   await expect(page.getByLabel('Search your notes', { exact: true })).toBeVisible({ timeout: 30000 });
   await expect(page.locator('.loading-notice')).toHaveCount(0, { timeout: 30000 });
@@ -130,8 +131,7 @@ async function main() {
   );
   await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).last().click();
   await page.reload();
-  await expect(page.getByLabel('Personal access token', { exact: true })).toHaveValue('');
-  await page.getByRole('button', { name: repository, exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Refresh', exact: true })).toBeEnabled();
   await page.locator('a[href$="#/archive"]').click();
   await expect(page.getByRole('button', { name: `Edit note: ${title}`, exact: true })).toBeVisible();
   const persistent = await page.evaluate(async () => {
@@ -157,7 +157,7 @@ async function main() {
   if (persistent.some((value) => value.includes(token)) || unexpectedTokenRequest)
     throw new Error('Credential boundary failed.');
   summary.checks.push(
-    'Refresh cleared token; cached archived note reopened; no token in local/session storage, IndexedDB or non-GitHub requests',
+    'Refresh restored the connection and archived note; no plaintext token in local/session storage, IndexedDB or non-GitHub requests',
   );
   summary.writes = writes;
   summary.credentialScope = process.env.TEBIKAE_TEST_TOKEN
