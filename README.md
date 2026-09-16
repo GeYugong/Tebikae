@@ -27,6 +27,8 @@ Select **Remember this connection in this browser** to save your connection with
 
 ## Development
 
+See [Contributing](CONTRIBUTING.md) for the contribution workflow, validation requirements, and required screenshots for UI changes.
+
 ```sh
 pnpm typecheck
 pnpm lint
