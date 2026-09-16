@@ -27,7 +27,8 @@ export function asApiFailure(error: unknown): ApiFailure {
 
 export interface HttpCache {
   get(scopeId: string, url: string): Promise<HttpCacheEntry | undefined>;
-  put(entry: HttpCacheEntry): Promise<unknown>;
+  /** Check inside the write transaction before committing; a thrown error must roll back the write. */
+  put(entry: HttpCacheEntry, checkActive: () => void): Promise<unknown>;
 }
 export interface GitHubClientOptions {
   fetch?: typeof globalThis.fetch;
@@ -308,6 +309,9 @@ export class GitHubClient {
         }
         const data: unknown = response.status === 204 ? null : await response.json();
         checkActive();
+        // The network deadline covers receiving and parsing, not optional local storage.
+        // Caller cancellation and session checks remain active until the request returns.
+        clearTimeout(timer);
         this.#secondaryDelay = 60_000;
         const link = response.headers.get('link');
         const etag = response.headers.get('etag');
@@ -321,13 +325,13 @@ export class GitHubClient {
             response: data,
             link,
           };
-          this.#memoryCache.set(cacheKey, entry);
           try {
-            if (persistentCache) await persistentCache.put(entry);
+            if (persistentCache) await persistentCache.put(entry, checkActive);
           } catch {
             /* Offline note persistence is separate from optional HTTP caching. */
           }
           checkActive();
+          this.#memoryCache.set(cacheKey, entry);
         }
         return { data, link };
       } catch (error) {

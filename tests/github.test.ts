@@ -4,7 +4,7 @@ import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { ApiError, GitHubClient, GITHUB_API_VERSION, nextPage } from '../src/adapters/github/client';
 import { CredentialProvider } from '../src/security/credentials';
-import type { Connection } from '../src/domain/types';
+import type { Connection, HttpCacheEntry } from '../src/domain/types';
 
 const origin = 'https://api.github.com';
 const issuePath = '/repos/scarletkc/Tebikae-dev/issues';
@@ -31,7 +31,10 @@ const issue = (number = 1) => ({
 });
 const server = setupServer();
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
-afterEach(() => server.resetHandlers());
+afterEach(() => {
+  server.resetHandlers();
+  vi.useRealTimers();
+});
 afterAll(() => server.close());
 function client(options: ConstructorParameters<typeof GitHubClient>[1] = {}) {
   const credentials = new CredentialProvider();
@@ -351,6 +354,95 @@ describe('GitHub adapter', () => {
     ).rejects.toMatchObject({ code: 'NETWORK_UNCERTAIN' });
     expect(fakeFetch).toHaveBeenCalledTimes(1);
   });
+  it('does not apply the network deadline to optional cache persistence', async () => {
+    vi.useFakeTimers();
+    let finish!: () => void;
+    let started!: () => void;
+    const persisting = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const cache = {
+      get: vi.fn(async () => undefined),
+      put: vi.fn(async () => {
+        started();
+        await new Promise<void>((resolve) => {
+          finish = resolve;
+        });
+      }),
+    };
+    const { api } = client({
+      cache,
+      timeoutMs: 20,
+      fetch: vi.fn(async () => new Response(JSON.stringify(issue()), { headers: { etag: 'valid' } })),
+    });
+    const pending = api.getIssue(connection, 1);
+    const result = expect(pending).resolves.toMatchObject({ number: 1 });
+    await persisting;
+    await vi.advanceTimersByTimeAsync(100);
+    finish();
+    await result;
+  });
+  it('still enforces the network deadline while the response body is pending', async () => {
+    vi.useFakeTimers();
+    let finish!: () => void;
+    let started!: () => void;
+    const parsing = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const response = new Response(null, { headers: { etag: 'late' } });
+    vi.spyOn(response, 'json').mockImplementation(async () => {
+      started();
+      await new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      return issue();
+    });
+    const cache = { get: vi.fn(async () => undefined), put: vi.fn(async () => undefined) };
+    const { api } = client({ cache, timeoutMs: 20, fetch: vi.fn(async () => response) });
+    const result = expect(api.getIssue(connection, 1)).rejects.toMatchObject({ code: 'NETWORK_UNCERTAIN' });
+    await parsing;
+    await vi.advanceTimersByTimeAsync(100);
+    finish();
+    await result;
+    expect(cache.put).not.toHaveBeenCalled();
+  });
+  it.each(['cancel', 'session'] as const)(
+    'does not publish cache entries on %s during persistence',
+    async (reason) => {
+      const controller = new AbortController();
+      let finish!: () => void;
+      let started!: () => void;
+      let published: HttpCacheEntry | undefined;
+      const persisting = new Promise<void>((resolve) => {
+        started = resolve;
+      });
+      const cache = {
+        get: vi.fn(async () => published),
+        put: vi.fn(async (entry: HttpCacheEntry, checkActive?: () => void) => {
+          started();
+          await new Promise<void>((resolve) => {
+            finish = resolve;
+          });
+          checkActive?.();
+          published = entry;
+        }),
+      };
+      const { api, credentials } = client({
+        cache,
+        fetch: vi.fn(async () => new Response(JSON.stringify(issue()), { headers: { etag: 'cancelled' } })),
+      });
+      const pending = api.getIssue(connection, 1, controller.signal);
+      const result = expect(pending).rejects.toMatchObject({
+        code: reason === 'cancel' ? 'NETWORK_UNCERTAIN' : 'SESSION_EXPIRED',
+      });
+      await persisting;
+      if (reason === 'cancel') controller.abort();
+      else credentials.set('replacement-token');
+      finish();
+      await result;
+      expect(published).toBeUndefined();
+    },
+  );
   it('rejects old-session responses before writing cached data', async () => {
     let complete!: (response: Response) => void;
     const fetched = new Promise<void>((resolve) => {
@@ -411,7 +503,10 @@ describe('GitHub adapter', () => {
     const { api, credentials } = client({ cache });
     const connected = await api.connect('scarletkc/Tebikae-dev');
     expect(cache.put).toHaveBeenCalledTimes(1);
-    expect(cache.put).toHaveBeenCalledWith(expect.objectContaining({ scopeId: connected.scopeId }));
+    expect(cache.put).toHaveBeenCalledWith(
+      expect.objectContaining({ scopeId: connected.scopeId }),
+      expect.any(Function),
+    );
     credentials.set('new-account');
     await expect(api.getIssue(connected, 1)).rejects.toMatchObject({ code: 'SESSION_EXPIRED' });
   });
