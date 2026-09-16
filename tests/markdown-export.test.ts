@@ -52,7 +52,12 @@ describe('Markdown archive', () => {
       format: 'tebikae-markdown-export',
       schemaVersion: 1,
       repository: 'owner/notebook',
-      coverage: { loadedNotesOnly: true, includesTrash: false, includesRecoveryCopies: false },
+      coverage: {
+        loadedNotesOnly: true,
+        includesTrash: false,
+        includesOrdinaryIssues: false,
+        includesRecoveryCopies: false,
+      },
       notes: [
         {
           path: 'notes/中文 😀.md',
@@ -116,6 +121,46 @@ describe('Markdown archive', () => {
       '4',
     ]);
     expect((await unpack(snapshot([...notes].reverse()))).text).toEqual(text);
+  });
+
+  it.each([
+    ['Σ', 'σ', 'ς'],
+    ['ß', 'SS', 'ẞ'],
+    ['µ', 'Μ', 'μ'],
+    ['ſ', 'S', 's'],
+    ['ﬀ', 'FF', 'ff'],
+    ['é', 'É', 'e\u0301'],
+  ])('keeps Unicode-equivalent filenames distinct for %s, %s, and %s', async (...titles) => {
+    const notes = titles.map((title, index) => note(title, String(index)));
+    const { text, manifest } = await unpack(snapshot(notes));
+    expect(manifest.notes.map((item: { path: string }) => item.path)).toEqual([
+      `notes/${titles[0]!.normalize('NFC')}.md`,
+      `notes/${titles[1]!.normalize('NFC')} (2).md`,
+      `notes/${titles[2]!.normalize('NFC')} (3).md`,
+    ]);
+    for (const item of manifest.notes as Array<{ path: string; title: string }>)
+      expect(text[item.path]).toContain(`# ${item.title}\n`);
+    expect((await unpack(snapshot([...notes].reverse()))).text).toEqual(text);
+  });
+
+  it.each(['COM¹', 'COM²', 'COM³', 'LPT¹', 'LPT²', 'LPT³'])(
+    'escapes reserved device name %s with or without extensions',
+    async (device) => {
+      const titles = [device, `${device.toLowerCase()}.txt`, `${device}.tar.gz`];
+      const { text, manifest } = await unpack(
+        snapshot(titles.map((title, index) => note(title, String(index)))),
+      );
+      expect(manifest.notes.map((item: { path: string }) => item.path)).toEqual(
+        titles.map((title) => `notes/_${title}.md`),
+      );
+      expect(Object.keys(text)).toHaveLength(4);
+    },
+  );
+
+  it('keeps ordinary COM and LPT prefixes unchanged', async () => {
+    const titles = ['COM10', 'LPT0', 'COM¹notes'];
+    const { text } = await unpack(snapshot(titles.map((title) => note(title))));
+    for (const title of titles) expect(text[`notes/${title}.md`]).toBeDefined();
   });
 
   it.each([

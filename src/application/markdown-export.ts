@@ -59,8 +59,15 @@ function safeStem(title: string): string {
     stem += character;
   }
   stem = stem.replace(/^[. ]+|[. ]+$/gu, '') || 'note';
-  if (/^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/iu.test(stem)) stem = `_${stem}`;
+  if (/^(?:con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\.|$)/iu.test(stem)) stem = `_${stem}`;
   return stem;
+}
+
+function collisionKey(path: string): string {
+  // Conservatively merge Unicode case variants (sigma, sharp S, ligatures, etc.).
+  // Lowercase first handles capital sharp S; uppercase expands multi-character pairs.
+  // NFD also compares canonically equivalent combining sequences after case conversion.
+  return path.normalize('NFD').toLowerCase().toUpperCase().normalize('NFD');
 }
 
 export async function createMarkdownArchive(snapshot: MarkdownExportSnapshot, includeTrash = false) {
@@ -78,8 +85,8 @@ export async function createMarkdownArchive(snapshot: MarkdownExportSnapshot, in
     const stem = safeStem(note.current.title);
     let path = `${folder}/${stem}.md`;
     let suffix = 2;
-    while (used.has(path.toLowerCase())) path = `${folder}/${stem} (${suffix++}).md`;
-    used.add(path.toLowerCase());
+    while (used.has(collisionKey(path))) path = `${folder}/${stem} (${suffix++}).md`;
+    used.add(collisionKey(path));
     // Retain cached label names when the repository label listing is unavailable.
     const labels = note.current.labelIds.map((id) => {
       const label =
@@ -111,6 +118,7 @@ export async function createMarkdownArchive(snapshot: MarkdownExportSnapshot, in
     coverage: {
       loadedNotesOnly: true,
       includesTrash: includeTrash,
+      includesOrdinaryIssues: false,
       includesComments: false,
       includesAttachmentBytes: false,
       includesRecoveryCopies: false,
