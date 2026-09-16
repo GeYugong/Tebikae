@@ -249,6 +249,8 @@ export class GitHubClient {
         if (cached?.accept !== accept || cached.apiVersion !== GITHUB_API_VERSION) cached = undefined;
       }
       this.#checkSession(credential);
+      // Cache reads may yield before the fetch abort listener is registered.
+      if (signal?.aborted) throw new ApiError({ code: 'NETWORK_UNCERTAIN' });
       const headers: Record<string, string> = {
         Accept: accept,
         Authorization: `Bearer ${credential.token}`,
@@ -258,6 +260,10 @@ export class GitHubClient {
       if (cached) headers['If-None-Match'] = cached.etag;
       const controller = new AbortController();
       const abort = () => controller.abort();
+      const checkActive = () => {
+        this.#checkSession(credential);
+        if (controller.signal.aborted) throw new ApiError({ code: 'NETWORK_UNCERTAIN' });
+      };
       signal?.addEventListener('abort', abort, { once: true });
       const timer = setTimeout(abort, this.#timeout);
       try {
@@ -272,7 +278,7 @@ export class GitHubClient {
           redirect: 'error',
           referrerPolicy: 'no-referrer',
         });
-        this.#checkSession(credential);
+        checkActive();
         const poll = Number(response.headers.get('x-poll-interval'));
         if (poll > 0) this.pollIntervalMs = Math.max(60_000, poll * 1_000);
         if (response.status === 304 && cached)
@@ -282,6 +288,7 @@ export class GitHubClient {
           // Secondary limits can arrive without exposed rate-limit headers; inspect only the message and never persist it.
           if (response.status === 403 && failure.code === 'FORBIDDEN') {
             const errorData = (await response.json().catch(() => null)) as { message?: unknown } | null;
+            checkActive();
             if (
               typeof errorData?.message === 'string' &&
               /(?:secondary rate|rate limit|abuse detection)/iu.test(errorData.message)
@@ -300,7 +307,7 @@ export class GitHubClient {
           throw new ApiError(failure);
         }
         const data: unknown = response.status === 204 ? null : await response.json();
-        this.#checkSession(credential);
+        checkActive();
         this.#secondaryDelay = 60_000;
         const link = response.headers.get('link');
         const etag = response.headers.get('etag');
@@ -320,7 +327,7 @@ export class GitHubClient {
           } catch {
             /* Offline note persistence is separate from optional HTTP caching. */
           }
-          this.#checkSession(credential);
+          checkActive();
         }
         return { data, link };
       } catch (error) {

@@ -283,6 +283,74 @@ describe('GitHub adapter', () => {
     ).rejects.toMatchObject({ code: 'NETWORK_UNCERTAIN' });
     expect(fakeFetch).toHaveBeenCalledTimes(1);
   });
+  it('does not dispatch a read cancelled while its persistent cache is loading', async () => {
+    const controller = new AbortController();
+    let finishCache!: () => void;
+    let cacheStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      cacheStarted = resolve;
+    });
+    const cache = {
+      get: vi.fn(() => {
+        cacheStarted();
+        return new Promise<undefined>((resolve) => {
+          finishCache = () => resolve(undefined);
+        });
+      }),
+      put: vi.fn(async () => undefined),
+    };
+    const fakeFetch = vi.fn(async () => new Response(JSON.stringify(issue())));
+    const { api } = client({ cache, fetch: fakeFetch });
+    const pending = api.getIssue(connection, 1, controller.signal);
+    const rejected = expect(pending).rejects.toMatchObject({ code: 'NETWORK_UNCERTAIN' });
+    await started;
+    controller.abort();
+    finishCache();
+    await rejected;
+    expect(fakeFetch).not.toHaveBeenCalled();
+    expect(cache.put).not.toHaveBeenCalled();
+  });
+  it('rejects a response that completes after cancellation and releases the request queue', async () => {
+    const controller = new AbortController();
+    const fakeFetch = vi.fn(async () => {
+      controller.abort();
+      return new Response(JSON.stringify(issue()), { headers: { etag: 'cancelled' } });
+    });
+    const cache = { get: vi.fn(async () => undefined), put: vi.fn(async () => undefined) };
+    const { api } = client({ cache, fetch: fakeFetch });
+    await expect(api.getIssue(connection, 1, controller.signal)).rejects.toMatchObject({
+      code: 'NETWORK_UNCERTAIN',
+    });
+    expect(cache.put).not.toHaveBeenCalled();
+    expect((await api.getIssue(connection, 1)).number).toBe(1);
+    expect(fakeFetch).toHaveBeenCalledTimes(2);
+  });
+  it('does not cache a response cancelled while its body is being read', async () => {
+    const controller = new AbortController();
+    const response = new Response(null, { headers: { etag: 'cancelled-body' } });
+    vi.spyOn(response, 'json').mockImplementation(async () => {
+      controller.abort();
+      return issue();
+    });
+    const cache = { get: vi.fn(async () => undefined), put: vi.fn(async () => undefined) };
+    const { api } = client({ cache, fetch: vi.fn(async () => response) });
+    await expect(api.getIssue(connection, 1, controller.signal)).rejects.toMatchObject({
+      code: 'NETWORK_UNCERTAIN',
+    });
+    expect(cache.put).not.toHaveBeenCalled();
+  });
+  it('treats a write response arriving after its timeout as uncertain without retrying', async () => {
+    const fakeFetch = vi.fn(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((resolve) => {
+          init?.signal?.addEventListener('abort', () => resolve(new Response(JSON.stringify(issue()))));
+        }),
+    );
+    await expect(
+      client({ fetch: fakeFetch, timeoutMs: 5 }).api.createIssue(connection, { title: 'a', body: 'a' }),
+    ).rejects.toMatchObject({ code: 'NETWORK_UNCERTAIN' });
+    expect(fakeFetch).toHaveBeenCalledTimes(1);
+  });
   it('rejects old-session responses before writing cached data', async () => {
     let complete!: (response: Response) => void;
     const fetched = new Promise<void>((resolve) => {
