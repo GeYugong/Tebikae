@@ -24,13 +24,13 @@ function backup() {
         kind: 'markdown',
         color: 'blue',
         pinned: false,
-        trashedAt: null,
+        trashedAt: null as string | null,
       },
       ...patch,
     },
   });
   const trash = note(23, 'Recovered trash');
-  trash.current.meta.trashedAt = '2026-09-01T00:00:00Z' as unknown as null;
+  trash.current.meta.trashedAt = '2026-09-01T00:00:00Z';
   return {
     format: 'issue-notes-export',
     schemaVersion: 1,
@@ -193,6 +193,8 @@ test('Chinese dark mobile preview remains scrollable and keyboard dismissal work
   await page.locator('#theme-setting').selectOption('dark');
   await page.locator('#language-setting').click();
   await page.getByRole('menuitemradio', { name: '简体中文', exact: true }).click();
+  await page.getByRole('button', { name: '导入 JSON 备份', exact: true }).scrollIntoViewIfNeeded();
+  await capture(page, 'settings-mobile-zh-dark-after');
   await page.getByRole('button', { name: '导入 JSON 备份', exact: true }).click();
   await page.locator('input[type=file]').setInputFiles({
     name: '备份.json',
@@ -243,4 +245,53 @@ test('another tab cannot import while the notebook is locked for editing', async
   await second.goto('/#/settings');
   await expect(second.getByRole('button', { name: 'Import JSON backup', exact: true })).toBeDisabled();
   await second.close();
+});
+
+test('a failed import rolls back every note and explains the outcome in Chinese', async ({
+  page,
+  context,
+}) => {
+  const remote = await mockGitHub(context);
+  await connect(page);
+  await openImport(page);
+  await choose(page);
+  await page.getByRole('checkbox', { name: 'Unmatched label', exact: true }).uncheck();
+  await page.evaluate(() => {
+    const original = IDBObjectStore.prototype.add;
+    IDBObjectStore.prototype.add = function (...args: Parameters<IDBObjectStore['add']>) {
+      if (this.name === 'outbox') {
+        IDBObjectStore.prototype.add = original;
+        throw new DOMException('Storage full', 'QuotaExceededError');
+      }
+      return original.apply(this, args);
+    };
+    localStorage.setItem('tebikae.language', 'zh-CN');
+    dispatchEvent(new StorageEvent('storage', { key: 'tebikae.language', newValue: 'zh-CN' }));
+  });
+  await page.getByRole('button', { name: '导入选中项（2）', exact: true }).click();
+  await expect(page.getByRole('alert')).toHaveText(
+    '导入保存失败，本次未导入任何笔记。请释放设备存储空间后重试。',
+  );
+  await page.getByRole('alert').scrollIntoViewIfNeeded();
+  await capture(page, 'import-storage-error-desktop-zh');
+  await page.setViewportSize({ width: 390, height: 780 });
+  await page.getByRole('alert').scrollIntoViewIfNeeded();
+  await capture(page, 'import-storage-error-mobile-zh');
+  expect(remote.writes).toEqual([]);
+  const localCount = await page.evaluate(
+    () =>
+      new Promise<number>((resolve, reject) => {
+        const request = indexedDB.open('tebikae');
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => {
+          const database = request.result;
+          const transaction = database.transaction('notes', 'readonly');
+          const count = transaction.objectStore('notes').count();
+          count.onsuccess = () => resolve(count.result);
+          count.onerror = () => reject(count.error);
+          transaction.oncomplete = () => database.close();
+        };
+      }),
+  );
+  expect(localCount).toBe(3);
 });

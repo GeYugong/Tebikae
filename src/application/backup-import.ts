@@ -19,12 +19,17 @@ export interface ImportPreview {
   rows: ImportRow[];
   invalid: ParsedBackup['invalid'];
 }
-function mapLabels(note: BackupNote, labels: Label[]) {
+function indexLabels(labels: Label[]) {
+  const byName = new Map<string, number | null>();
+  for (const label of labels) byName.set(label.name, byName.has(label.name) ? null : label.id);
+  return byName;
+}
+function mapLabels(note: BackupNote, byName: ReadonlyMap<string, number | null>) {
   const ids: number[] = [],
     missing: string[] = [];
   for (const name of note.labelNames) {
-    const matches = labels.filter((label) => label.name === name);
-    if (matches.length === 1) ids.push(matches[0]!.id);
+    const id = byName.get(name);
+    if (id !== undefined && id !== null) ids.push(id);
     else missing.push(name);
   }
   return { ids: [...new Set(ids)], missing };
@@ -43,11 +48,12 @@ export async function previewBackupImport(
     snapshot.notes.flatMap((note) => (note.importFingerprint ? [note.importFingerprint] : [])),
   );
   const rows: ImportRow[] = [];
+  const labelsByName = indexLabels(snapshot.labels);
   for (const note of backup.notes) {
     const fingerprint = await backupNoteFingerprint(note);
     const duplicate = known.has(fingerprint);
     known.add(fingerprint);
-    rows.push({ ...note, fingerprint, duplicate, missingLabels: mapLabels(note, snapshot.labels).missing });
+    rows.push({ ...note, fingerprint, duplicate, missingLabels: mapLabels(note, labelsByName).missing });
   }
   return { scopeId, repository: backup.repository, rows, invalid: backup.invalid };
 }
@@ -71,7 +77,9 @@ export async function importBackupNotes(
   return database.transaction('rw', database.notes, database.outbox, database.labels, async () => {
     checkWritable();
     const existing = await database.notes.where('scopeId').equals(preview.scopeId).toArray();
-    const labels = await database.labels.where('scopeId').equals(preview.scopeId).toArray();
+    const labelsByName = indexLabels(
+      await database.labels.where('scopeId').equals(preview.scopeId).toArray(),
+    );
     const fingerprints = new Set(
       existing.flatMap((note) => (note.importFingerprint ? [note.importFingerprint] : [])),
     );
@@ -85,7 +93,7 @@ export async function importBackupNotes(
         continue;
       }
       // Reject a stale label preview rather than silently changing what the user accepted.
-      const mapped = mapLabels(row, labels);
+      const mapped = mapLabels(row, labelsByName);
       if (JSON.stringify(mapped.missing) !== JSON.stringify(row.missingLabels))
         throw new BackupImportError('selection');
       const current = safeJsonClone(row.document);

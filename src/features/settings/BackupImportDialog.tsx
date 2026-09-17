@@ -89,14 +89,15 @@ export default function BackupImportDialog({ onClose }: { onClose(): void }) {
     try {
       checkWritable();
       const imported = await importBackupNotes(preview, [...selected], checkWritable);
+      if (!mounted.current) return;
       setResult(imported);
       // Local commit is complete; network failures are reported by the ordinary sync UI.
       void session.engine?.flush(false).catch(() => {});
     } catch (reason) {
-      fail(reason);
+      if (mounted.current) fail(reason);
     } finally {
       running.current = false;
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   }
   return (

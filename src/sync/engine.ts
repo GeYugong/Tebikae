@@ -296,13 +296,7 @@ export class SyncEngine {
           }
           if (note) {
             const attempt = (await this.db.outbox.get([scopeId, note.localId])) as Attempt;
-            // A recovered POST may still need the separate close step for an archived draft.
-            await this.acknowledge(
-              note,
-              attempt,
-              remote,
-              !attempt.attemptSnapshot?.archived || remote.state === 'closed',
-            );
+            await this.recoverCreate(note, attempt, remote);
             return;
           }
         }
@@ -333,6 +327,56 @@ export class SyncEngine {
         }
       },
     );
+  }
+
+  /** Called inside ingest's transaction after locating an uncertain POST by UUID. */
+  private async recoverCreate(note: LocalNote, attempt: Attempt, remote: RawIssueSnapshot) {
+    const sent = attempt.attemptSnapshot;
+    const document = snapshotToDocument(remote);
+    if (!sent || !document) {
+      await this.conflict(note, remote, ['base']);
+      return;
+    }
+    // The POST sent this content but always created an open Issue. Treat any
+    // outstanding archive intent as a local change, alongside edits made since dispatch.
+    const baseline: RawIssueSnapshot = {
+      ...remote,
+      title: sent.title,
+      body: serializeNoteBody(sent.meta, sent.markdown),
+      state: 'open',
+      labels: sent.labelIds.map((id) => ({ id, name: '', color: '', description: null })),
+    };
+    const result = mergeThreeWay(baseline, note.current, remote);
+    const conflicted = result.conflicts.length > 0;
+    const done = !conflicted && this.sameContent(result.document, document);
+    const key: [string, string] = [note.scopeId, note.localId];
+    if (conflicted) await saveRecovery(this.db, note, 'recovered-create-conflict');
+    await this.db.notes.put({
+      ...note,
+      issueId: remote.id,
+      issueNumber: remote.number,
+      current: result.document,
+      base: conflicted ? baseline : remote,
+      lastSeenRemote: remote,
+      syncStatus: conflicted ? 'conflict' : done ? 'synced' : 'pending',
+      conflictFields: conflicted ? result.conflicts : undefined,
+      error: undefined,
+      remoteUnavailable: false,
+    });
+    if (done) {
+      await this.db.outbox.delete(key);
+      await this.db.recovery.where('[scopeId+localId]').equals(key).modify({ resolved: true });
+    } else {
+      // The creation is confirmed. Future work must reconcile against the merged
+      // baseline as an update, not replay the old POST snapshot after another restart.
+      await this.db.outbox.put({
+        scopeId: note.scopeId,
+        localId: note.localId,
+        operationId: attempt.operationId,
+        kind: 'update',
+        status: conflicted ? 'conflict' : 'pending',
+      });
+    }
   }
 
   private async detectDuplicates() {

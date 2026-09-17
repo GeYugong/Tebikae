@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Download, ExternalLink, HardDrive, LogOut, Trash2, WifiOff } from 'lucide-react';
+import { Download, ExternalLink, HardDrive, LogOut, Trash2, Upload, WifiOff } from 'lucide-react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { usePreferences, type Theme } from '../../app/preferences';
 import { useSession, flushAllDrafts } from '../../app/session';
@@ -162,6 +162,7 @@ export default function Settings({ onConnect, offlineReady }: { onConnect(): voi
           disabled={busy || !session.writable}
           onClick={() => setImportOpen(true)}
         >
+          <Upload size={16} />
           {t('backupImport.title')}
         </button>
         <hr />

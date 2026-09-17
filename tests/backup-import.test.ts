@@ -227,6 +227,27 @@ describe('transactional backup import', () => {
     expect(await database.outbox.count()).toBe(0);
   });
 
+  it('treats ambiguous label names as unmatched and keeps exact unique matches', async () => {
+    const parsed = parse(
+      backup([document({ labelIds: [1, 2] })], {
+        labels: [
+          { id: 1, name: 'Work' },
+          { id: 2, name: 'Unique' },
+        ],
+      }),
+    );
+    await database.labels.bulkPut([
+      { scopeId: 'a', id: 7, name: 'Work', color: 'ffffff', description: null },
+      { scopeId: 'a', id: 8, name: 'Work', color: 'ffffff', description: null },
+      { scopeId: 'a', id: 9, name: 'Unique', color: 'ffffff', description: null },
+      { scopeId: 'a', id: 10, name: 'work', color: 'ffffff', description: null },
+    ]);
+    const preview = await previewBackupImport('a', parsed, database);
+    expect(preview.rows[0]!.missingLabels).toEqual(['Work']);
+    await importBackupNotes(preview, [0], writable, database);
+    expect((await database.notes.toArray())[0]!.current.labelIds).toEqual([9]);
+  });
+
   it('rolls back when editing access is lost before commit', async () => {
     const preview = await previewBackupImport('a', parse(backup()), database);
     const guard = vi

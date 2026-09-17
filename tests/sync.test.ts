@@ -179,6 +179,158 @@ describe('durable synchronization', () => {
     },
   );
 
+  it.each([
+    { archived: true, state: 'open' as const },
+    { archived: true, state: 'closed' as const },
+    { archived: false, state: 'open' as const },
+  ])('keeps remote edits after a recovered create ($archived, $state)', async ({ archived, state }) => {
+    const document = { ...doc(), archived };
+    const draft = await createNote(connection.scopeId, document, database);
+    client.failCreateAfterWrite = true;
+    await engine.flush(true);
+    engine.stop();
+    client.issues[0] = {
+      ...client.issues[0]!,
+      title: 'Edited on GitHub',
+      body: serializeNoteBody({ ...document.meta, extension: { remote: true } }, 'Remote body'),
+      state,
+    };
+    engine = new SyncEngine(database, client, connection);
+    await engine.pull(true);
+    await engine.flush(true);
+    const saved = (await database.notes.get([connection.scopeId, draft.localId]))!;
+    expect(snapshotToDocument(client.issues[0]!)).toMatchObject({
+      title: 'Edited on GitHub',
+      markdown: 'Remote body',
+      archived,
+      meta: { extension: { remote: true } },
+    });
+    expect(saved.current).toEqual(snapshotToDocument(client.issues[0]!));
+    expect(saved.syncStatus).toBe('synced');
+    expect(client.creates).toBe(1);
+    expect(client.patches).toEqual(
+      archived && state === 'open' ? [{ state: 'closed', state_reason: 'completed' }] : [],
+    );
+    expect(await database.outbox.count()).toBe(0);
+  });
+
+  it('merges later local changes and remote labels after a recovered create across another restart', async () => {
+    client.labels = [1, 2, 3, 4].map((id) => ({
+      id,
+      name: `Label ${id}`,
+      color: 'aaaaaa',
+      description: null,
+    }));
+    const document = { ...doc(), archived: true, labelIds: [1, 2] };
+    const draft = await createNote(connection.scopeId, document, database);
+    client.failCreateAfterWrite = true;
+    await engine.flush(true);
+    engine.stop();
+    await saveNote(
+      connection.scopeId,
+      draft.localId,
+      {
+        ...document,
+        meta: { ...document.meta, color: 'blue' },
+        labelIds: [2, 4],
+      },
+      database,
+    );
+    client.issues[0] = {
+      ...client.issues[0]!,
+      title: 'Remote title',
+      body: serializeNoteBody({ ...document.meta, pinned: true }, 'Remote body'),
+      labels: [client.labels[0]!, client.labels[2]!],
+    };
+    engine = new SyncEngine(database, client, connection);
+    await engine.pull(true);
+    expect((await firstNote()).current).toMatchObject({
+      title: 'Remote title',
+      markdown: 'Remote body',
+      archived: true,
+      meta: { color: 'blue', pinned: true },
+      labelIds: [3, 4],
+    });
+    expect(await database.outbox.get([connection.scopeId, draft.localId])).toMatchObject({
+      kind: 'update',
+      status: 'pending',
+    });
+    engine.stop();
+    client.issues[0]!.title = 'Edited again before closing';
+    engine = new SyncEngine(database, client, connection);
+    await engine.flush(true);
+    const saved = (await firstNote()).current;
+    expect(saved).toMatchObject({
+      title: 'Edited again before closing',
+      markdown: 'Remote body',
+      archived: true,
+      meta: { color: 'blue', pinned: true },
+    });
+    expect(saved.labelIds.sort()).toEqual([3, 4]);
+    expect(client.creates).toBe(1);
+    expect(client.patches).toHaveLength(1);
+    expect(client.patches[0]).not.toHaveProperty('title');
+    expect(await database.outbox.count()).toBe(0);
+  });
+
+  it.each(['title', 'markdown'] as const)(
+    'pauses competing %s edits after a recovered create',
+    async (field) => {
+      const document = { ...doc(), archived: true };
+      const draft = await createNote(connection.scopeId, document, database);
+      client.failCreateAfterWrite = true;
+      await engine.flush(true);
+      engine.stop();
+      const local = { ...document, [field]: 'Later local edit' };
+      await saveNote(connection.scopeId, draft.localId, local, database);
+      const remote = raw({ ...document, [field]: 'Later remote edit', archived: false });
+      client.issues[0] = remote;
+      engine = new SyncEngine(database, client, connection);
+      await engine.pull(true);
+      await engine.flush(true);
+      const saved = await firstNote();
+      expect(saved).toMatchObject({
+        issueId: remote.id,
+        issueNumber: remote.number,
+        syncStatus: 'conflict',
+        conflictFields: [field],
+      });
+      expect(saved.current[field]).toBe('Later local edit');
+      expect(saved.lastSeenRemote).toEqual(remote);
+      expect(client.issues[0]).toEqual(remote);
+      expect(client.creates).toBe(1);
+      expect(client.patches).toEqual([]);
+      expect(
+        (await database.recovery.toArray()).some(
+          (item) => item.snapshot[field] === 'Later local edit' && !item.resolved,
+        ),
+      ).toBe(true);
+      await resolveConflict(connection.scopeId, draft.localId, 'remote', database);
+      await engine.flush(true);
+      expect((await firstNote()).current[field]).toBe('Later remote edit');
+      expect(await database.outbox.count()).toBe(0);
+      expect(client.creates).toBe(1);
+    },
+  );
+
+  it('respects a later local unarchive after a recovered create', async () => {
+    const document = { ...doc(), archived: true };
+    const draft = await createNote(connection.scopeId, document, database);
+    client.failCreateAfterWrite = true;
+    await engine.flush(true);
+    engine.stop();
+    await saveNote(connection.scopeId, draft.localId, { ...document, archived: false }, database);
+    client.issues[0]!.title = 'Remote edit';
+    engine = new SyncEngine(database, client, connection);
+    await engine.pull(true);
+    await engine.flush(true);
+    expect((await firstNote()).current).toMatchObject({ title: 'Remote edit', archived: false });
+    expect(client.issues[0]!.state).toBe('open');
+    expect(client.creates).toBe(1);
+    expect(client.patches).toEqual([]);
+    expect(await database.outbox.count()).toBe(0);
+  });
+
   it('retains newer local input while the initial archive step is in flight', async () => {
     const draft = await createNote(connection.scopeId, { ...doc(), archived: true }, database);
     client.onPatch = async () => {
