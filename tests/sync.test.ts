@@ -129,6 +129,78 @@ afterEach(async () => {
 const firstNote = async () => (await database.notes.toArray())[0]!;
 
 describe('durable synchronization', () => {
+  it('creates an archived draft once and closes the acknowledged Issue', async () => {
+    const document = { ...doc(), archived: true };
+    const draft = await createNote(connection.scopeId, document, database);
+    await engine.flush(true);
+    const saved = (await database.notes.get([connection.scopeId, draft.localId]))!;
+    expect(client.creates).toBe(1);
+    expect(client.patches).toEqual([{ state: 'closed', state_reason: 'completed' }]);
+    expect(saved.current.archived).toBe(true);
+    expect(saved.base?.state).toBe('closed');
+    expect(saved.syncStatus).toBe('synced');
+    expect(await database.outbox.count()).toBe(0);
+  });
+
+  it('preserves archive intent after recovering a lost create response', async () => {
+    const draft = await createNote(connection.scopeId, { ...doc(), archived: true }, database);
+    client.failCreateAfterWrite = true;
+    await engine.flush(true);
+    expect(client.issues[0]!.state).toBe('open');
+    engine.stop();
+    engine = new SyncEngine(database, client, connection);
+    await engine.pull(true);
+    expect((await database.notes.get([connection.scopeId, draft.localId]))!.current.archived).toBe(true);
+    await engine.flush(true);
+    expect(client.creates).toBe(1);
+    expect(client.issues[0]!.state).toBe('closed');
+    expect(await database.outbox.count()).toBe(0);
+  });
+
+  it.each([false, true])(
+    'retries only the close step after its response is lost (applied: %s)',
+    async (applied) => {
+      const draft = await createNote(connection.scopeId, { ...doc(), archived: true }, database);
+      const update = client.updateIssue.bind(client);
+      const spy = vi.spyOn(client, 'updateIssue').mockImplementationOnce(async (...args) => {
+        if (applied) await update(...args);
+        throw error('NETWORK_UNCERTAIN');
+      });
+      await engine.flush(true);
+      const saved = (await database.notes.get([connection.scopeId, draft.localId]))!;
+      expect(saved.issueNumber).toBe(1);
+      expect(saved.current.archived).toBe(true);
+      expect((await database.outbox.get([connection.scopeId, draft.localId]))!.kind).toBe('update');
+      spy.mockRestore();
+      await engine.retry(draft.localId);
+      expect(client.creates).toBe(1);
+      expect(client.issues[0]!.state).toBe('closed');
+      expect(await database.outbox.count()).toBe(0);
+    },
+  );
+
+  it('retains newer local input while the initial archive step is in flight', async () => {
+    const draft = await createNote(connection.scopeId, { ...doc(), archived: true }, database);
+    client.onPatch = async () => {
+      const latest = (await database.notes.get([connection.scopeId, draft.localId]))!;
+      await saveNote(
+        connection.scopeId,
+        draft.localId,
+        { ...latest.current, markdown: 'Newer input', archived: false },
+        database,
+      );
+    };
+    await engine.flush(true);
+    const saved = (await database.notes.get([connection.scopeId, draft.localId]))!;
+    expect(saved.current).toMatchObject({ markdown: 'Newer input', archived: false });
+    expect(saved.syncStatus).toBe('pending');
+    client.onPatch = undefined;
+    await engine.flush(true);
+    expect(client.creates).toBe(1);
+    expect(client.issues[0]!.state).toBe('open');
+    expect(await database.outbox.count()).toBe(0);
+  });
+
   it('recovers a lost POST response by UUID across every page without another POST', async () => {
     client.issues = Array.from({ length: 110 }, (_, index) => raw(doc(), index + 1));
     const draft = await createNote(connection.scopeId, doc(), database);

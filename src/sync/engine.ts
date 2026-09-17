@@ -296,7 +296,13 @@ export class SyncEngine {
           }
           if (note) {
             const attempt = (await this.db.outbox.get([scopeId, note.localId])) as Attempt;
-            await this.acknowledge(note, attempt, remote, true);
+            // A recovered POST may still need the separate close step for an archived draft.
+            await this.acknowledge(
+              note,
+              attempt,
+              remote,
+              !attempt.attemptSnapshot?.archived || remote.state === 'closed',
+            );
             return;
           }
         }
@@ -452,12 +458,24 @@ export class SyncEngine {
     const attempt = await this.freeze(note, note.current);
     this.assertActive(generation);
     this.lastAutoWrite = Date.now();
-    const remote = await this.client.createIssue(this.connection, {
+    let remote = await this.client.createIssue(this.connection, {
       title: note.current.title,
       body: serializeNoteBody(note.current.meta, note.current.markdown),
       labels: labels.map((label) => label.name),
     });
     this.assertActive(generation);
+    if (attempt.attemptSnapshot?.archived) {
+      // GitHub creates Issues open. Persist its identity before attempting the close,
+      // so a failed/lost close response can never cause a second creation.
+      await this.acknowledge(note, attempt, remote, false);
+      this.assertActive(generation);
+      this.lastAutoWrite = Date.now();
+      remote = await this.client.updateIssue(this.connection, remote.number, {
+        state: 'closed',
+        state_reason: 'completed',
+      });
+      this.assertActive(generation);
+    }
     await this.acknowledge(note, attempt, remote, true);
   }
 
